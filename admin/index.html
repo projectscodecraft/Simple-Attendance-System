@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin - Attendance Records</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <style>
+      body {
+        background: #f4f6f9;
+      }
+      .nav-tabs .nav-link.active {
+        font-weight: bold;
+        background: #0d6efd;
+        color: white;
+      }
+      img {
+        border-radius: 8px;
+      }
+      .action-buttons {
+        display: flex;
+        gap: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container py-4">
+      <!-- 🔹 Action Buttons -->
+      <div class="action-buttons mb-3">
+        <button onclick="history.back()" class="btn btn-secondary">
+          ⬅ Back
+        </button>
+        <button onclick="printPDF()" class="btn btn-success">
+          🖨 Print to PDF
+        </button>
+      </div>
+
+      <h2 class="mb-4">📊 Admin - Attendance Records</h2>
+
+      <!-- Section Tabs -->
+      <ul id="sectionTabs" class="nav nav-tabs mb-3"></ul>
+
+      <!-- Filter Form -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5>Filters</h5>
+          <div class="row g-2">
+            <div class="col-md-3">
+              <input type="date" id="dateFrom" class="form-control" />
+            </div>
+            <div class="col-md-3">
+              <input type="date" id="dateTo" class="form-control" />
+            </div>
+            <div class="col-md-3">
+              <input
+                type="text"
+                id="subjectFilter"
+                class="form-control"
+                placeholder="Subject (e.g. CS101)"
+              />
+            </div>
+            <div class="col-md-3">
+              <input
+                type="text"
+                id="nameFilter"
+                class="form-control"
+                placeholder="Name (e.g. Virocel)"
+              />
+            </div>
+          </div>
+          <button id="applyFilters" class="btn btn-primary mt-3 w-100">
+            Apply Filters
+          </button>
+        </div>
+      </div>
+
+      <!-- Attendance Table -->
+      <div id="attendanceTable" class="table-responsive"></div>
+    </div>
+
+    <script>
+      // 🔹 Firebase Config
+      const firebaseConfig = {
+        apiKey: "AIzaSyDqjFTrX4cWHrDsqi77LglivP75hFr3ch8",
+        authDomain: "attendance-system-8336a.firebaseapp.com",
+        databaseURL:
+          "https://attendance-system-8336a-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        projectId: "attendance-system-8336a",
+        storageBucket: "attendance-system-8336a.appspot.com",
+        messagingSenderId: "789681848272",
+        appId: "1:789681848272:web:40318e1ee8d9c8871443d5",
+      };
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      let attendanceData = {};
+      let currentSection = null;
+
+      // Load all attendance data
+      function loadAttendance() {
+        db.ref("attendance").once("value", (snapshot) => {
+          attendanceData = snapshot.val() || {};
+          const sections = [
+            ...new Set(Object.values(attendanceData).map((r) => r.section)),
+          ];
+
+          // Build tabs dynamically
+          const tabsContainer = document.getElementById("sectionTabs");
+          tabsContainer.innerHTML = "";
+          sections.forEach((section, idx) => {
+            const tab = document.createElement("li");
+            tab.className = "nav-item";
+            tab.innerHTML = `
+          <button class="nav-link ${
+            idx === 0 ? "active" : ""
+          }" data-section="${section}">
+            ${section}
+          </button>`;
+            tabsContainer.appendChild(tab);
+          });
+
+          // Set default section
+          currentSection = sections[0] || null;
+          renderTable();
+
+          // Tab click event
+          document.querySelectorAll("#sectionTabs button").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              document
+                .querySelectorAll("#sectionTabs button")
+                .forEach((b) => b.classList.remove("active"));
+              btn.classList.add("active");
+              currentSection = btn.dataset.section;
+              renderTable();
+            });
+          });
+        });
+      }
+
+      // Render table with filters
+      function renderTable() {
+        const tableDiv = document.getElementById("attendanceTable");
+        if (!currentSection) {
+          tableDiv.innerHTML = "<p>No sections found.</p>";
+          return;
+        }
+
+        const fromDate = document.getElementById("dateFrom").value
+          ? new Date(document.getElementById("dateFrom").value)
+          : null;
+        const toDate = document.getElementById("dateTo").value
+          ? new Date(document.getElementById("dateTo").value)
+          : null;
+        const subjectFilter = document
+          .getElementById("subjectFilter")
+          .value.trim()
+          .toLowerCase();
+        const nameFilter = document
+          .getElementById("nameFilter")
+          .value.trim()
+          .toLowerCase();
+
+        let html = `
+      <table class="table table-striped table-bordered">
+        <thead class="table-dark">
+          <tr>
+            <th>Name</th>
+            <th>Subject</th>
+            <th>Date</th>
+            <th>Photo</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+        Object.values(attendanceData)
+          .filter((r) => r.section === currentSection)
+          .filter((r) => {
+            // Date range filter
+            if (fromDate || toDate) {
+              const recordDate = new Date(r.timestamp);
+              if (fromDate && recordDate < fromDate) return false;
+              if (toDate && recordDate > toDate) return false;
+            }
+            // Subject filter
+            if (
+              subjectFilter &&
+              !(r.subject || "").toLowerCase().includes(subjectFilter)
+            )
+              return false;
+            // Name filter
+            if (
+              nameFilter &&
+              !(r.name || "").toLowerCase().includes(nameFilter)
+            )
+              return false;
+            return true;
+          })
+          .forEach((r) => {
+            html += `
+          <tr>
+            <td>${r.name || ""}</td>
+            <td>${r.subject || ""}</td>
+            <td>${
+              r.timestamp ? new Date(r.timestamp).toLocaleString() : ""
+            }</td>
+            <td>${r.photo ? `<img src="${r.photo}" width="80">` : ""}</td>
+          </tr>`;
+          });
+
+        html += "</tbody></table>";
+        tableDiv.innerHTML = html;
+      }
+
+      // Apply filters button
+      document
+        .getElementById("applyFilters")
+        .addEventListener("click", renderTable);
+
+      // Print to PDF
+      function printPDF() {
+        const printContents =
+          document.getElementById("attendanceTable").innerHTML;
+        const originalContents = document.body.innerHTML;
+        document.body.innerHTML = `
+          <h2>Attendance Records</h2>
+          ${printContents}
+        `;
+        window.print();
+        document.body.innerHTML = originalContents;
+        location.reload(); // reload page to restore event listeners
+      }
+
+      // Load on page start
+      loadAttendance();
+    </script>
+  </body>
+</html>

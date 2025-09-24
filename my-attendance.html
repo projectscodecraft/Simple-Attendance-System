@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Attendance</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <style>
+      body {
+        background: linear-gradient(to right, #74ebd5, #acb6e5);
+        font-family: Arial, sans-serif;
+      }
+      #calendar {
+        max-width: 100%;
+        margin: 10px auto;
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+      /* 🔹 Make calendar more compact on mobile */
+      @media (max-width: 768px) {
+        #calendar {
+          padding: 5px;
+          font-size: 0.8rem;
+        }
+        .fc-toolbar-title {
+          font-size: 1rem !important;
+        }
+        .fc-daygrid-day-number {
+          font-size: 0.7rem !important;
+        }
+      }
+      .modal-content {
+        border-radius: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container text-center mt-4">
+      <h2>📅 My Attendance</h2>
+      <p id="studentNameDisplay" class="text-muted fw-bold"></p>
+      <a href="index.html" class="btn btn-secondary mb-3">⬅ Back</a>
+    </div>
+
+    <div id="calendar"></div>
+
+    <!-- Attendance Details Modal -->
+    <div
+      class="modal fade"
+      id="attendanceModal"
+      tabindex="-1"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered modal-sm modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Attendance Details</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body" id="attendanceDetails"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 🔹 Firebase Config
+      const firebaseConfig = {
+        apiKey: "AIzaSyDqjFTrX4cWHrDsqi77LglivP75hFr3ch8",
+        authDomain: "attendance-system-8336a.firebaseapp.com",
+        databaseURL:
+          "https://attendance-system-8336a-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "attendance-system-8336a",
+        storageBucket: "attendance-system-8336a.appspot.com",
+        messagingSenderId: "789681848272",
+        appId: "1:789681848272:web:40318e1ee8d9c8871443d5",
+      };
+
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      // 🔹 Get student name
+      const urlParams = new URLSearchParams(window.location.search);
+      const studentName = urlParams.get("name");
+      document.getElementById("studentNameDisplay").innerText =
+        "Hello, " + studentName;
+
+      // 🔹 Load attendance
+      db.ref("attendance").on("value", (snapshot) => {
+        const data = snapshot.val();
+        const groupedByDate = {};
+
+        for (let id in data) {
+          if (data[id].name === studentName) {
+            const date = new Date(data[id].timestamp);
+            const dateStr = date.toISOString().split("T")[0];
+            if (!groupedByDate[dateStr]) groupedByDate[dateStr] = [];
+            groupedByDate[dateStr].push({
+              subject: data[id].subject,
+              section: data[id].section,
+              time: date.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              photo: data[id].photo,
+            });
+          }
+        }
+
+        const events = Object.keys(groupedByDate).map((dateStr) => ({
+          title: groupedByDate[dateStr].length + " attendance(s)",
+          start: dateStr,
+          extendedProps: { records: groupedByDate[dateStr] },
+        }));
+
+        const calendarEl = document.getElementById("calendar");
+        const calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: window.innerWidth < 768 ? "listWeek" : "dayGridMonth", // 🔹 Responsive default view
+          headerToolbar: {
+            left: "prev,next today",
+            center: "title",
+            right:
+              window.innerWidth < 768
+                ? "listDay,listWeek"
+                : "dayGridMonth,dayGridWeek",
+          },
+          views: {
+            listDay: { buttonText: "Day" },
+            listWeek: { buttonText: "Week" },
+          },
+          events: events,
+          eventClick: function (info) {
+            const records = info.event.extendedProps.records;
+            let detailsHtml = `<ul class="list-group">`;
+            records.forEach((r) => {
+              detailsHtml += `<li class="list-group-item">
+                <strong>${r.subject} (${r.section})</strong><br/>
+                ⏰ ${r.time}<br/>
+                <img src="${r.photo}" alt="Attendance Photo" style="max-width:100%; margin-top:5px; border-radius:6px;">
+              </li>`;
+            });
+            detailsHtml += `</ul>`;
+            document.getElementById("attendanceDetails").innerHTML =
+              detailsHtml;
+            new bootstrap.Modal(
+              document.getElementById("attendanceModal")
+            ).show();
+          },
+        });
+
+        calendar.render();
+
+        // 🔹 Adjust view when window is resized
+        window.addEventListener("resize", () => {
+          if (window.innerWidth < 768) {
+            calendar.changeView("listWeek");
+          } else {
+            calendar.changeView("dayGridMonth");
+          }
+        });
+      });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "sections": ["BSCS-3A", "BSCS-3B", "BSCS-3D"],
+  "subjects": [
+    { "code": "CS301", "name": "Programming Languages" },
+    { "code": "CS305", "name": "Software Engineering" },
+    { "code": "CS306", "name": "Computational Science" }
+  ]
+}
