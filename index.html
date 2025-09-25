@@ -75,7 +75,7 @@
           <button id="startCamera" class="btn btn-primary w-100 mb-2">
             🎥 Start Camera
           </button>
-          <button id="captureBtn" class="btn btn-success w-100" disabled>
+          <button id="captureBtn" class="btn btn-success w-100">
             ✅ Mark Attendance
           </button>
         </div>
@@ -111,11 +111,6 @@
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       const context = canvas.getContext("2d");
-      const captureBtn = document.getElementById("captureBtn");
-      let cameraStarted = false;
-
-      // Disable button until camera starts
-      captureBtn.disabled = true;
 
       // Start camera
       document.getElementById("startCamera").addEventListener("click", () => {
@@ -123,8 +118,6 @@
           .getUserMedia({ video: true })
           .then((stream) => {
             video.srcObject = stream;
-            cameraStarted = true;
-            captureBtn.disabled = false;
           })
           .catch((err) => {
             alert("Camera access denied: " + err.message);
@@ -132,20 +125,11 @@
       });
 
       // Capture attendance
-      captureBtn.addEventListener("click", async () => {
-        if (!cameraStarted) {
-          alert("Please start the camera first!");
-          return;
-        }
-
+      document.getElementById("captureBtn").addEventListener("click", async () => {
         const name = document.getElementById("studentName").value.trim();
         const section = document.getElementById("section").value;
         const subject = document.getElementById("subject").value;
 
-        if (!name) {
-          alert("Please enter your name.");
-          return;
-        }
         if (!section || !subject) {
           alert("Please select Section and Subject.");
           return;
@@ -157,43 +141,25 @@
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/png");
 
-        // Check if photo exists
-        if (!dataUrl || dataUrl.length < 1000) {
-          alert("Please capture your photo before marking attendance.");
+        // 🔹 Check brightness of the image (to prevent covered camera)
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        let totalBrightness = 0;
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const r = imageData.data[i];
+          const g = imageData.data[i + 1];
+          const b = imageData.data[i + 2];
+          const brightness = (r + g + b) / 3;
+          totalBrightness += brightness;
+        }
+        const avgBrightness = totalBrightness / (imageData.data.length / 4);
+
+        if (avgBrightness < 30) { // 👈 Adjust threshold as needed
+          alert("⚠️ Please uncover your camera. No face detected.");
           return;
         }
 
         try {
-          const ref = db.ref("attendance");
-
-          // Query last attendance for this student
-          const snapshot = await ref
-            .orderByChild("name")
-            .equalTo(name)
-            .limitToLast(1)
-            .get();
-
-          let canMark = true;
-          snapshot.forEach((childSnapshot) => {
-            const record = childSnapshot.val();
-            if (
-              record.section === section &&
-              record.subject === subject &&
-              Date.now() - record.timestamp < 5 * 60 * 1000 // 5 minutes
-            ) {
-              canMark = false;
-            }
-          });
-
-          if (!canMark) {
-            alert(
-              "You already marked attendance for this subject. Try again after 5 minutes."
-            );
-            return;
-          }
-
-          // Save attendance
-          await ref.push({
+          await db.ref("attendance").push({
             name,
             section,
             subject,
@@ -207,6 +173,7 @@
           );
           successModal.show();
 
+          // Redirect after 3 seconds
           setTimeout(() => {
             window.location.href = `my-attendance.html?name=${encodeURIComponent(
               name
@@ -218,10 +185,11 @@
         }
       });
 
-      // Populate dropdowns
+      // Load sections & subjects
       fetch("edit-here.json?v=" + new Date().getTime())
         .then((response) => response.json())
         .then((data) => {
+          // Populate Sections
           const sectionSelect = document.getElementById("section");
           data.sections.forEach((section) => {
             const opt = document.createElement("option");
@@ -230,6 +198,7 @@
             sectionSelect.appendChild(opt);
           });
 
+          // Populate Subjects
           const subjectSelect = document.getElementById("subject");
           data.subjects.forEach((subject) => {
             const opt = document.createElement("option");
